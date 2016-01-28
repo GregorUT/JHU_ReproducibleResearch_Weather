@@ -23,26 +23,45 @@ if(!file.exists("./RawStormData.csv"))
 ExtractedData <- read.csv("RawStormData.BZ2")
 ```
 
+```{r}
+## Need to fix formating
+StartDateLimit <- as.date(as.character("01/01/1996"))
+```
+
+Prior to 1996 National Climatic Data Center did not track all weather realted events.
+http://www.ncdc.noaa.gov/stormevents/details.jsp?type=eventtype
+With this in mind.  I have limited events to those occuring after:`r StartDateLimit`.
+```{r}
+lExtractedData <- subset(ExtractedData, BGN_DATE > StartDateLimit)
+```
 
 # Exploring the data
 
 ## Start with Fatalities
 ```{r}
-Fatalaties <- ExtractedData[,c(8,23)]
+Fatalaties <- ExtractedData[,c(2,8,23)]
+```
 
+
+
+```{r}
 FatalSummation <- ddply(Fatalaties, .(EVTYPE), summarise, mean=mean(FATALITIES), sum=sum(FATALITIES))
 # Limit Fatal Stats to those that have a total count > 0
 LFatalSummation <- FatalSummation[FatalSummation$sum > 0 ,]
+
 # Order by # of fatalities high to low
 OrderLFatalSummation <- LFatalSummation[with(LFatalSummation, order(-LFatalSummation$sum)), ]
 
 ```
+Of the `r count(event)` events recordered,
+`r count(LFatalSummation)` included fatalities.
+
 
 ## Histogram of the events with the top 20 highest total fatalities
 ```{r}
-LFatalSummation <- FatalSummation[FatalSummation$sum > 20 ,]
-OrderLFatalSummation <- FatalSummation[FatalSummation$sum,order(-LFatalSummation$sum), ]
-
+MinFatalities <- 1
+LFatalSummation <- FatalSummation[FatalSummation$sum >= MinFatalities ,]
+OrderLFatalSummation <- LFatalSummation[with(LFatalSummation, order(-LFatalSummation$sum)), ]
 ```
 
 
