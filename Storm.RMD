@@ -4,14 +4,20 @@ author: "Gregory Smith"
 date: "January 25, 2016"
 output: html_document
 ---
-Dependencies
+Introduction
 
+The U.S. National Oceanic and Atmospheric Administration track storms and other weather related events through the NOAA database.
+Through data extracted from the database, this report will document the impact both in terms of bodily damage as well as monetary costs associated with these events, in order to prioritise resources for the preparation of weather related events.
+
+
+Dependencies required for the scripts:
 ```{r}
+library(plyr)
 library(dplyr)
+library(ggplot2)
 ```
 
 Download and extract data
-
 ```{r}
 ## check to see if file "RawData.csv" exists
 
@@ -23,50 +29,133 @@ if(!file.exists("./RawStormData.csv"))
 ExtractedData <- read.csv("RawStormData.BZ2")
 ```
 
-```{r}
-## Need to fix formating
-StartDateLimit <- as.date(as.character("01/01/1996"))
-```
-
 Prior to 1996 National Climatic Data Center did not track all weather realted events.
 http://www.ncdc.noaa.gov/stormevents/details.jsp?type=eventtype
-With this in mind.  I have limited events to those occuring after:`r StartDateLimit`.
+In order to prioritize resources for weather related events we should focus in on the events recorded after January, 1, 1996.
 ```{r}
+StartDateLimit <- as.Date("01/01/1996", "%m/%d/%Y")
+ExtractedData$BGN_DATE <-  as.Date(as.character(ExtractedData$BGN_DATE), "%m/%d/%Y")
 lExtractedData <- subset(ExtractedData, BGN_DATE > StartDateLimit)
 ```
+Currently the report is set to limit events to those occuring after:`r StartDateLimit`.
 
-# Exploring the data
-
-## Start with Fatalities
+#Bodily Harm
+This report will focus on events which included at least one fatality or one injury.
 ```{r}
-Fatalaties <- ExtractedData[,c(2,8,23)]
+RecentEvents <- lExtractedData[,c(2,8,23,24)]
+CasualtyEvents <- subset(RecentEvents,FATALITIES> 0 | RecentEvents$INJURIES >0)
+
+```
+
+The events have been recorded by hand.  Many events are similar in nature but are reported under different names.  Example "High Winds" or "Strong Wind"
+It would helps to understand the true extent of the nature of the events by combineing similar events together.
+```{r}
+CasualtyEvents[, 2] <- sapply(CasualtyEvents[,2], as.character)
+Keywords <- c("FLOOD", "HEAT","COLD","SEA","WIND", "RAIN", "SURF","SNOW","FOG","FIRE", "HURRICANE", "WINTER", "DUST")
+KeyIndex <- 1
+while (KeyIndex <  length(Keywords))
+{
+     FoundSimilarInd <- grep(Keywords[KeyIndex], CasualtyEvents$EVTYPE, ignore.case = TRUE)
+     CasualtyEvents$EVTYPE[FoundSimilarInd] <- Keywords[KeyIndex]
+     KeyIndex <- KeyIndex + 1
+}
+CasualtyEvents$EVTYPE <- factor(CasualtyEvents$EVTYPE) 
+
 ```
 
 
-
+Prepare a descending list of Fatalities and Injuries.
 ```{r}
-FatalSummation <- ddply(Fatalaties, .(EVTYPE), summarise, mean=mean(FATALITIES), sum=sum(FATALITIES))
-# Limit Fatal Stats to those that have a total count > 0
-LFatalSummation <- FatalSummation[FatalSummation$sum > 0 ,]
-
-# Order by # of fatalities high to low
-OrderLFatalSummation <- LFatalSummation[with(LFatalSummation, order(-LFatalSummation$sum)), ]
+SortedFatalities <- sort(tapply(CasualtyEvents$FATALITIES, CasualtyEvents$EVTYPE, sum), decreasing = T)
+SortedInjuries <- sort(tapply(CasualtyEvents$INJURIES, CasualtyEvents$EVTYPE, sum), decreasing = T)
 
 ```
-Of the `r count(event)` events recordered,
-`r count(LFatalSummation)` included fatalities.
 
-
-## Histogram of the events with the top 20 highest total fatalities
+Prepare the data frames for Fatalities and Injuries
 ```{r}
-MinFatalities <- 1
-LFatalSummation <- FatalSummation[FatalSummation$sum >= MinFatalities ,]
-OrderLFatalSummation <- LFatalSummation[with(LFatalSummation, order(-LFatalSummation$sum)), ]
+FEvents <- as.vector(names(head(SortedFatalities, 15)))
+FSum <- as.vector(head(SortedFatalities, 15))
+dfSortedFatal <- data.frame(FEvents, FSum)
+
+IEvents <- as.vector(names(head(SortedInjuries, 15)))
+ISum <- as.vector(head(SortedInjuries, 15))
+dfSortedInjuries <- data.frame(IEvents,ISum )
 ```
 
+Prepare the plot to compare the top 15 event type by total number of fatalities
+```{r}
+PlotFatality <-  ggplot(data = dfSortedFatal, aes(x = FEvents, y = FSum))+ theme(axis.text.x = element_text(angle = 45, hjust = 1)) + geom_bar(stat = "identity") + 
+    xlab("Event Type") + ylab("Number of Fatalities") + ggtitle("Highest Fatality Counts, 1996-2011")
+
+PlotInjury <- ggplot(data = dfSortedInjuries, aes(x = IEvents, y = ISum))+ theme(axis.text.x = element_text(angle = 45, hjust = 1)) + geom_bar(stat = "identity")  + xlab("Event Type") + 
+    ylab("Number of Fatalities") + ggtitle("Highest Injury Counts, 1996-2011")
+```
+
+
+## Now For Damage
+Limit Events to those with monetary damage.
+```{r}
+RecentEvents <- lExtractedData[,c(2,8,25:28)]
+FinancialImpact <- subset(RecentEvents, PROPDMG > 0 | CROPDMG >0) 
+```
+
+Many events are similar in nature but are reported under different names.  Example "High Winds" or "Strong Wind"
+It would helps to understand the true extent of the nature of the events by combineing similar events together.
+
+```{r}
+FinancialImpact[, 2] <- sapply(FinancialImpact[,2], as.character)
+Keywords <- c("FLOOD", "HEAT","COLD","SEA","WIND", "RAIN", "SURF","SNOW","FOG","FIRE", "HURRICANE", "WINTER", "DUST", "TIDE", "FREEZE")
+KeyIndex <- 1
+while (KeyIndex <  length(Keywords))
+{
+     FoundSimilarInd <- grep(Keywords[KeyIndex], FinancialImpact$EVTYPE, ignore.case = TRUE)
+     FinancialImpact$EVTYPE[FoundSimilarInd] <- Keywords[KeyIndex]
+     KeyIndex <- KeyIndex + 1
+}
+FinancialImpact$EVTYPE <- factor(FinancialImpact$EVTYPE) 
+
+```
 
 ## Property damage is based on two columns "PROPDMG" a numeric value and "PROPDMGEXP" a letter value representing 
-## K = 1000, M= 100000, 
+## K = 1000, M= 100000
+```{r}
+# Convert EXP columns to character vector for text update
+FinancialImpact[, 4] <- sapply(FinancialImpact[,4], as.character)
+FinancialImpact[, 6] <- sapply(FinancialImpact[,6], as.character)
+
+FinancialImpact$PROPDMGEXP[FinancialImpact$PROPDMGEXP == ""] <- "1"
+FinancialImpact$PROPDMGEXP[FinancialImpact$PROPDMGEXP == "K"] <- "1000"
+FinancialImpact$PROPDMGEXP[FinancialImpact$PROPDMGEXP == "M"] <- "1000000"
+FinancialImpact$PROPDMGEXP[FinancialImpact$PROPDMGEXP == "H"] <- "100"
+FinancialImpact$PROPDMGEXP[FinancialImpact$PROPDMGEXP == "B"] <- "1000000000"
+
+FinancialImpact$CROPDMGEXP[FinancialImpact$CROPDMGEXP == ""] <- "1"
+FinancialImpact$CROPDMGEXP[FinancialImpact$CROPDMGEXP == "K"] <- "1000"
+FinancialImpact$CROPDMGEXP[FinancialImpact$CROPDMGEXP == "M"] <- "1000000"
+FinancialImpact$CROPDMGEXP[FinancialImpact$CROPDMGEXP == "H"] <- "100"
+FinancialImpact$CROPDMGEXP[FinancialImpact$CROPDMGEXP == "B"] <- "1000000000"
+
+FinancialImpact[, 4] <- as.numeric(as.character(FinancialImpact[,4]))
+FinancialImpact[, 6] <- as.numeric(as.character(FinancialImpact[,6]))
+
+FinancialImpact$TotalDamage <- FinancialImpact$PROPDMG*FinancialImpact$PROPDMGEXP +FinancialImpact$CROPDMG*FinancialImpact$CROPDMGEXP
+```
+
+
+Summarize financial impact per event type by sum then sort.
+Convert to data frame in preparation for graphing.
 ```{r}
 
-{```}
+sFinanceByEvent <- sort(tapply(FinancialImpact$TotalDamage, FinancialImpact$EVTYPE, sum), decreasing = T)
+
+FinEvents <- as.vector(names(head(sFinanceByEvent , 15)))
+FinSum <- as.vector(head(sFinanceByEvent , 15))
+dFinSortedFatal <- data.frame(FinEvents, FinSum)
+## stub for Plot
+```
+
+Plot total costs by event types
+```{R{}}
+PlotFinancialCosts <- ggplot(data = dFinSortedFatal, aes(x = FinEvents, y = FinSum/1000000000)) + geom_bar(stat = "identity")  + xlab("Event Type") + theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+    ylab("Total Financial Cost in Billions") + ggtitle("Total Financial Costs by Event Type, 1996-2011")
+```
